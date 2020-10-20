@@ -1,0 +1,15 @@
+{
+    "name": "Freicar AugSim Dataset",
+    "path_dataset": "/home/vertensj/datasets/augsim_final/static_f2/",
+    "path_intrinsic": "/home/vertensj/software/Open3D/examples/test_data/freicar_camera.json",
+    "max_depth": 4.0,
+    "voxel_size": 0.1,
+    "max_depth_diff": 10,
+    "preference_loop_closure_odometry": 0.1,
+    "preference_loop_closure_registration": 5.0,
+    "tsdf_cubic_size": 15.0,
+    "icp_method": "color",
+    "global_registration": "ransac",
+    "python_multi_threading": false
+}
+

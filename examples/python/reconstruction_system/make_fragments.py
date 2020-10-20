@@ -31,7 +31,7 @@ def read_rgbd_image(color_file, depth_file, convert_rgb_to_intensity, config):
     return rgbd_image
 
 
-def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic,
+def register_one_rgbd_pair(s, t, color_files, depth_files, poses, intrinsic,
                            with_opencv, config):
     source_rgbd_image = read_rgbd_image(color_files[s], depth_files[s], True,
                                         config)
@@ -40,29 +40,44 @@ def register_one_rgbd_pair(s, t, color_files, depth_files, intrinsic,
 
     option = o3d.pipelines.odometry.OdometryOption()
     option.max_depth_diff = config["max_depth_diff"]
-    if abs(s - t) != 1:
-        if with_opencv:
-            success_5pt, odo_init = pose_estimation(source_rgbd_image,
-                                                    target_rgbd_image,
-                                                    intrinsic, False)
-            if success_5pt:
-                [success, trans, info
-                ] = o3d.pipelines.odometry.compute_rgbd_odometry(
-                    source_rgbd_image, target_rgbd_image, intrinsic, odo_init,
-                    o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(),
-                    option)
-                return [success, trans, info]
-        return [False, np.identity(4), np.identity(6)]
-    else:
-        odo_init = np.identity(4)
-        [success, trans, info] = o3d.pipelines.odometry.compute_rgbd_odometry(
-            source_rgbd_image, target_rgbd_image, intrinsic, odo_init,
-            o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(), option)
-        return [success, trans, info]
+    option.max_depth = 5
+
+    odo_init = np.linalg.inv(poses[s]).dot(poses[t])
+    # odo_init = np.identity(4)
+    # print('MARKER')
+    # print(poses[t])
+    # print(poses[s])
+    # print(test)
+    # if abs(s - t) != 1:
+    #     if with_opencv:
+    #         success_5pt, odo_init = pose_estimation(source_rgbd_image,
+    #                                                 target_rgbd_image,
+    #                                                 intrinsic, False)
+    #         if success_5pt:
+    #             [success, trans, info
+    #             ] = o3d.pipelines.odometry.compute_rgbd_odometry(
+    #                 source_rgbd_image, target_rgbd_image, intrinsic, odo_init,
+    #                 o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(),
+    #                 option)
+    #             print('ESTIMATED')
+    #             print(trans)
+    #             return [success, trans, info, odo_init]
+    #     return [False, np.identity(4), np.identity(6)]
+    # else:
+    print('GT')
+    print(odo_init)
+
+    [success, trans, info] = o3d.pipelines.odometry.compute_rgbd_odometry(
+                source_rgbd_image, target_rgbd_image, intrinsic, np.linalg.inv(odo_init),
+                o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(), option)
+    trans = np.linalg.inv(trans)
+    print('ESTIMATED')
+    print(trans)
+    return [success, trans, info, poses[t]]
 
 
 def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
-                                depth_files, fragment_id, n_fragments,
+                                depth_files, poses, fragment_id, n_fragments,
                                 intrinsic, with_opencv, config):
     o3d.utility.set_verbosity_level(o3d.utility.VerbosityLevel.Error)
     pose_graph = o3d.pipelines.registration.PoseGraph()
@@ -77,7 +92,7 @@ def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
                     "Fragment %03d / %03d :: RGBD matching between frame : %d and %d"
                     % (fragment_id, n_fragments - 1, s, t))
                 [success, trans,
-                 info] = register_one_rgbd_pair(s, t, color_files, depth_files,
+                 info, global_trans] = register_one_rgbd_pair(s, t, color_files, depth_files, poses,
                                                 intrinsic, with_opencv, config)
                 trans_odometry = np.dot(trans, trans_odometry)
                 trans_odometry_inv = np.linalg.inv(trans_odometry)
@@ -98,7 +113,7 @@ def make_posegraph_for_fragment(path_dataset, sid, eid, color_files,
                     "Fragment %03d / %03d :: RGBD matching between frame : %d and %d"
                     % (fragment_id, n_fragments - 1, s, t))
                 [success, trans,
-                 info] = register_one_rgbd_pair(s, t, color_files, depth_files,
+                 info, global_trans] = register_one_rgbd_pair(s, t, color_files, depth_files, poses,
                                                 intrinsic, with_opencv, config)
                 if success:
                     pose_graph.edges.append(
@@ -146,7 +161,7 @@ def make_pointcloud_for_fragment(path_dataset, color_files, depth_files,
     o3d.io.write_point_cloud(pcd_name, pcd, False, True)
 
 
-def process_single_fragment(fragment_id, color_files, depth_files, n_files,
+def process_single_fragment(fragment_id, color_files, depth_files, poses, n_files,
                             n_fragments, config):
     if config["path_intrinsic"]:
         intrinsic = o3d.io.read_pinhole_camera_intrinsic(
@@ -158,7 +173,7 @@ def process_single_fragment(fragment_id, color_files, depth_files, n_files,
     eid = min(sid + config['n_frames_per_fragment'], n_files)
 
     make_posegraph_for_fragment(config["path_dataset"], sid, eid, color_files,
-                                depth_files, fragment_id, n_fragments,
+                                depth_files, poses, fragment_id, n_fragments,
                                 intrinsic, with_opencv, config)
     optimize_posegraph_for_fragment(config["path_dataset"], fragment_id, config)
     make_pointcloud_for_fragment(config["path_dataset"], color_files,
@@ -169,20 +184,20 @@ def process_single_fragment(fragment_id, color_files, depth_files, n_files,
 def run(config):
     print("making fragments from RGBD sequence.")
     make_clean_folder(join(config["path_dataset"], config["folder_fragment"]))
-    [color_files, depth_files] = get_rgbd_file_lists(config["path_dataset"])
+    [color_files, depth_files, poses] = get_rgbd_file_lists(config["path_dataset"])
     n_files = len(color_files)
     n_fragments = int(math.ceil(float(n_files) / \
             config['n_frames_per_fragment']))
 
-    if config["python_multi_threading"].lower() == "true":
+    if str(config["python_multi_threading"]).lower() == "true":
         from joblib import Parallel, delayed
         import multiprocessing
         import subprocess
         MAX_THREAD = min(multiprocessing.cpu_count(), n_fragments)
         Parallel(n_jobs=MAX_THREAD)(delayed(process_single_fragment)(
-            fragment_id, color_files, depth_files, n_files, n_fragments, config)
+            fragment_id, color_files, depth_files, poses, n_files, n_fragments, config)
                                     for fragment_id in range(n_fragments))
     else:
         for fragment_id in range(n_fragments):
-            process_single_fragment(fragment_id, color_files, depth_files,
+            process_single_fragment(fragment_id, color_files, depth_files, poses,
                                     n_files, n_fragments, config)

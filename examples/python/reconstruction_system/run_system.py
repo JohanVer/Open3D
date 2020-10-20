@@ -47,7 +47,7 @@ if __name__ == "__main__":
         with open(args.config) as json_file:
             config = json.load(json_file)
             initialize_config(config)
-            check_folder_structure(config["path_dataset"])
+            # check_folder_structure(config["path_dataset"])
     assert config is not None
 
     if args.debug_mode:

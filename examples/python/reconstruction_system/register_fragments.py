@@ -9,7 +9,7 @@ import open3d as o3d
 import sys
 sys.path.append("../utility")
 from file import join, get_file_list, make_clean_folder
-from visualization import draw_registration_result
+from utility.visualization import draw_registration_result
 sys.path.append(".")
 from optimize_posegraph import optimize_posegraph_for_scene
 from refine_registration import multiscale_icp
@@ -149,7 +149,7 @@ def make_posegraph_for_scene(ply_file_names, config):
         for t in range(s + 1, n_files):
             matching_results[s * n_files + t] = matching_result(s, t)
 
-    if config["python_multi_threading"].lower() == "true":
+    if str(config["python_multi_threading"]).lower() == "true":
         from joblib import Parallel, delayed
         import multiprocessing
         import subprocess

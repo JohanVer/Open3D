@@ -8,7 +8,36 @@ from os import listdir, makedirs
 from os.path import exists, isfile, join, splitext
 import shutil
 import re
+from pathlib import Path
+import transformations as tf
 
+def readFiles(path):
+    with open(path) as file:
+        content = file.readlines()
+        content = [x.strip() for x in content]
+    return content
+
+def readPoses(path):
+    with open(path) as file:
+        content = file.readlines()
+        content = [x.strip() for x in content]
+    poses = []
+    for c in content:
+        s = c.split(' ')
+        trans = [s[0], s[1], s[2]]
+        quat = [s[3], s[4], s[5], s[6]]
+
+        t_m = tf.quaternion_matrix(quat)
+        t_m[0:3, 3] = trans
+
+        poses.append(t_m)
+    return poses
+
+def searchForFiles(name, search_path):
+    paths = []
+    for path in Path(search_path).rglob(name):
+        paths.append(path)
+    return paths
 
 def sorted_alphanum(file_list_ordered):
     convert = lambda text: int(text) if text.isdigit() else text
@@ -43,11 +72,25 @@ def get_rgbd_folders(path_dataset):
 
 
 def get_rgbd_file_lists(path_dataset):
-    path_color, path_depth = get_rgbd_folders(path_dataset)
-    color_files = get_file_list(path_color, ".jpg") + \
-            get_file_list(path_color, ".png")
-    depth_files = get_file_list(path_depth, ".png")
-    return color_files, depth_files
+
+    rgb_path_files = searchForFiles('rgb_drive.txt', path_dataset + '/raw_full/')
+    vehicle_file = searchForFiles('rgb_drive_vehicle_0.0800.txt', path_dataset + '/raw_full/vehicle/')[0]
+
+    rgb_names = readFiles(str(rgb_path_files[0]))
+    rgb_list = []
+    depth_list = []
+
+    poses = readPoses(vehicle_file)
+
+    for n_idx, n in enumerate(rgb_names):
+            rgb_list.append(path_dataset + '/raw_full/rgb/' + n)
+            depth_list.append(path_dataset + '/raw_full/depth/' + n)
+
+    # path_color, path_depth = get_rgbd_folders(path_dataset)
+    # color_files = get_file_list(path_color, ".jpg") + \
+    #         get_file_list(path_color, ".png")
+    # depth_files = get_file_list(path_depth, ".png")
+    return rgb_list, depth_list, poses
 
 
 def make_clean_folder(path_folder):

@@ -9,7 +9,7 @@ import open3d as o3d
 import sys
 sys.path.append("../utility")
 from file import join, get_file_list
-from visualization import draw_registration_result_original_color
+from utility.visualization import draw_registration_result_original_color
 sys.path.append(".")
 from optimize_posegraph import optimize_posegraph_for_refined_scene
 
@@ -145,7 +145,7 @@ def make_posegraph_for_refined_scene(ply_file_names, config):
         matching_results[s * n_files + t] = \
                 matching_result(s, t, edge.transformation)
 
-    if config["python_multi_threading"].lower() == "true":
+    if str(config["python_multi_threading"]).lower() == "true":
         from joblib import Parallel, delayed
         import multiprocessing
         import subprocess
