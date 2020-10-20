@@ -10,6 +10,7 @@ import shutil
 import re
 from pathlib import Path
 import transformations as tf
+import json
 
 def readFiles(path):
     with open(path) as file:
@@ -17,7 +18,16 @@ def readFiles(path):
         content = [x.strip() for x in content]
     return content
 
-def readPoses(path):
+def readPoses(path, calibration=''):
+    if (calibration != ''):
+        print('Loading extrinsic calibration from: %s' % calibration)
+        with open(calibration,
+                  "r") as read_file:
+            camera_calibration_dict = json.load(read_file)
+        init_T_camera = camera_calibration_dict['transformation']
+    else:
+        init_T_camera = tf.identity_matrix()
+
     with open(path) as file:
         content = file.readlines()
         content = [x.strip() for x in content]
@@ -29,6 +39,9 @@ def readPoses(path):
 
         t_m = tf.quaternion_matrix(quat)
         t_m[0:3, 3] = trans
+
+        # Apply calibration
+        t_m = (t_m.dot(init_T_camera))
 
         poses.append(t_m)
     return poses
@@ -71,7 +84,7 @@ def get_rgbd_folders(path_dataset):
     return path_color, path_depth
 
 
-def get_rgbd_file_lists(path_dataset):
+def get_rgbd_file_lists(path_dataset, ext_calibration_path):
 
     rgb_path_files = searchForFiles('rgb_drive.txt', path_dataset + '/raw_full/')
     vehicle_file = searchForFiles('rgb_drive_vehicle_0.0800.txt', path_dataset + '/raw_full/vehicle/')[0]
@@ -80,7 +93,7 @@ def get_rgbd_file_lists(path_dataset):
     rgb_list = []
     depth_list = []
 
-    poses = readPoses(vehicle_file)
+    poses = readPoses(vehicle_file, ext_calibration_path)
 
     for n_idx, n in enumerate(rgb_names):
             rgb_list.append(path_dataset + '/raw_full/rgb/' + n)

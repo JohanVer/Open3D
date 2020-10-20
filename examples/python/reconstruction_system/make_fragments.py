@@ -13,21 +13,46 @@ from file import join, make_clean_folder, get_rgbd_file_lists
 from opencv import initialize_opencv
 sys.path.append(".")
 from optimize_posegraph import optimize_posegraph_for_fragment
+import cv2
+import matplotlib.pyplot as plt
 
 # check opencv python package
 with_opencv = initialize_opencv()
 if with_opencv:
     from opencv_pose_estimation import pose_estimation
 
+def loadDepth(paths, size=None, pad_info=None):
+    depth_im = [cv2.imread(p, cv2.IMREAD_ANYDEPTH).astype(np.float) for p in paths]
+    if size is not None:
+        depth_im = [cv2.resize(im, size, interpolation=cv2.INTER_NEAREST) for im in depth_im]
+
+    depth_im = [((im).astype(np.float)/1000.) for im in depth_im]
+    return depth_im
+
+def loadRGB(paths, size=None, pad_info=None):
+    rgb_im = [cv2.imread(p) for p in paths]
+    if size is not None:
+        rgb_im = [cv2.resize(im, size) for im in rgb_im]
+    # rgb_im = [cv2.cvtColor(i, cv2.COLOR_BGR2RGB) for i in rgb_im]
+
+    return rgb_im
 
 def read_rgbd_image(color_file, depth_file, convert_rgb_to_intensity, config):
-    color = o3d.io.read_image(color_file)
-    depth = o3d.io.read_image(depth_file)
+    # color = o3d.io.read_image(color_file)
+    # depth = o3d.io.read_image(depth_file)
+    color = loadRGB([color_file])[0]
+    depth = loadDepth([depth_file])[0]
+
     rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        color,
-        depth,
-        depth_trunc=config["max_depth"],
-        convert_rgb_to_intensity=convert_rgb_to_intensity)
+        o3d.geometry.Image(color.astype(np.uint8)), o3d.geometry.Image((depth * 1000).astype(np.uint16)))
+
+
+    # rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
+    #     color,
+    #     depth,
+    #     depth_trunc=config["max_depth"],
+    #     convert_rgb_to_intensity=convert_rgb_to_intensity)
+
     return rgbd_image
 
 
@@ -39,8 +64,8 @@ def register_one_rgbd_pair(s, t, color_files, depth_files, poses, intrinsic,
                                         config)
 
     option = o3d.pipelines.odometry.OdometryOption()
-    option.max_depth_diff = config["max_depth_diff"]
-    option.max_depth = 5
+    option.max_depth_diff = 10
+    # option.max_depth = 5
 
     odo_init = np.linalg.inv(poses[s]).dot(poses[t])
     # odo_init = np.identity(4)
@@ -67,9 +92,15 @@ def register_one_rgbd_pair(s, t, color_files, depth_files, poses, intrinsic,
     print('GT')
     print(odo_init)
 
+    options = o3d.pipelines.odometry.OdometryOption()
+    options.max_depth_diff = 0.2
+    options.max_depth = 5
+    # options.iteration_number_per_pyramid_level = open3d.utility.IntVector([300, 100, 100])
+    options.min_depth = 0.3
+
     [success, trans, info] = o3d.pipelines.odometry.compute_rgbd_odometry(
                 source_rgbd_image, target_rgbd_image, intrinsic, np.linalg.inv(odo_init),
-                o3d.pipelines.odometry.RGBDOdometryJacobianFromHybridTerm(), option)
+                o3d.pipelines.odometry.RGBDOdometryJacobianFromColorTerm(), options)
     trans = np.linalg.inv(trans)
     print('ESTIMATED')
     print(trans)
@@ -184,7 +215,7 @@ def process_single_fragment(fragment_id, color_files, depth_files, poses, n_file
 def run(config):
     print("making fragments from RGBD sequence.")
     make_clean_folder(join(config["path_dataset"], config["folder_fragment"]))
-    [color_files, depth_files, poses] = get_rgbd_file_lists(config["path_dataset"])
+    [color_files, depth_files, poses] = get_rgbd_file_lists(config["path_dataset"], config["ext_calibration"])
     n_files = len(color_files)
     n_fragments = int(math.ceil(float(n_files) / \
             config['n_frames_per_fragment']))
